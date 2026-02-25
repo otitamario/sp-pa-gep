@@ -194,3 +194,38 @@ def latex_table(summaries: List[RunSummary], caption: str, label: str) -> str:
         "\\end{table}\n"
     )
     return header + body + footer
+
+
+def plot_metric_across_cases(
+    *,
+    logs_by_case: dict[str, list],  # case name -> list[IterLog]
+    metric: str,                    # "step" | "residual" | "error"
+    ylabel: str,
+    title: str,
+    outpath: str,
+):
+    os.makedirs(os.path.dirname(outpath) or ".", exist_ok=True)
+
+    plt.figure()
+    for name, logs in logs_by_case.items():
+        if metric == "step":
+            y = [L.step for L in logs]
+        elif metric == "residual":
+            y = [L.residual for L in logs if L.residual is not None]
+        elif metric == "error":
+            y = [L.error for L in logs if L.error is not None]
+        else:
+            raise ValueError("metric must be one of: step, residual, error")
+
+        if len(y) == 0:
+            continue
+        plt.semilogy(np.arange(len(y)), np.array(y, float), label=name)
+
+    plt.xlabel("Iteration")
+    plt.ylabel(ylabel)
+    plt.title(title)
+    plt.grid(True, which="both", linestyle="--", linewidth=0.5)
+    plt.legend()
+    plt.tight_layout()
+    plt.savefig(outpath, dpi=200)
+    plt.close()
