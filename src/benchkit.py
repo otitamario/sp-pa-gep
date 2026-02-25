@@ -198,16 +198,30 @@ def latex_table(summaries: List[RunSummary], caption: str, label: str) -> str:
 
 def plot_metric_across_cases(
     *,
-    logs_by_case: dict[str, list],  # case name -> list[IterLog]
-    metric: str,                    # "step" | "residual" | "error"
+    logs_by_case: dict,
+    metric: str,
     ylabel: str,
     title: str,
     outpath: str,
 ):
+    import os
+    import numpy as np
+    import matplotlib.pyplot as plt
+
     os.makedirs(os.path.dirname(outpath) or ".", exist_ok=True)
 
     plt.figure()
+
+    # consistent color per μ
+    unique_mu = sorted({
+        name.split("μ=")[1] for name in logs_by_case.keys()
+    })
+
+    cmap = plt.get_cmap("tab10")
+    mu_color = {mu: cmap(i) for i, mu in enumerate(unique_mu)}
+
     for name, logs in logs_by_case.items():
+
         if metric == "step":
             y = [L.step for L in logs]
         elif metric == "residual":
@@ -215,17 +229,30 @@ def plot_metric_across_cases(
         elif metric == "error":
             y = [L.error for L in logs if L.error is not None]
         else:
-            raise ValueError("metric must be one of: step, residual, error")
+            raise ValueError("metric must be 'step', 'residual' or 'error'")
 
         if len(y) == 0:
             continue
-        plt.semilogy(np.arange(len(y)), np.array(y, float), label=name)
+
+        mu = name.split("μ=")[1]
+        color = mu_color[mu]
+
+        linestyle = "-" if "SPPA" in name else "--"
+
+        plt.semilogy(
+            np.arange(len(y)),
+            np.array(y, float),
+            linestyle=linestyle,
+            color=color,
+            linewidth=2.0,
+            label=name
+        )
 
     plt.xlabel("Iteration")
     plt.ylabel(ylabel)
     plt.title(title)
     plt.grid(True, which="both", linestyle="--", linewidth=0.5)
-    plt.legend()
+    plt.legend(frameon=False)
     plt.tight_layout()
-    plt.savefig(outpath, dpi=200)
+    plt.savefig(outpath, dpi=300)
     plt.close()
