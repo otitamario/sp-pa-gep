@@ -129,38 +129,98 @@ def make_standard_plots(
     plot_residual: bool = True,
     plot_error: bool = True,
 ) -> Dict[str, str]:
-    _ensure_dir(outdir)
-    out: Dict[str, str] = {}
 
-    steps = {m: np.array([L.step for L in logs], float) for m, logs in logs_by_method.items()}
-    p = os.path.join(outdir, f"{tag}_steps.png")
-    _semilogy_multi(steps, r"$\|x_{n+1}-x_n\|$", f"{tag}: Step size", p)
-    out["step"] = p
+    import os
+    import numpy as np
+    import matplotlib.pyplot as plt
 
+    os.makedirs(outdir, exist_ok=True)
+    outputs = {}
+
+    # --- color assignment (same color per μ if present) ---
+    # Extract μ if present in method name
+    unique_groups = set()
+    for name in logs_by_method.keys():
+        if "μ=" in name:
+            unique_groups.add(name.split("μ=")[1])
+        else:
+            unique_groups.add(name)
+
+    unique_groups = sorted(unique_groups)
+    cmap = plt.get_cmap("tab10")
+    group_color = {g: cmap(i) for i, g in enumerate(unique_groups)}
+
+    def plot_metric(metric_key, ylabel, filename):
+        plt.figure()
+
+        for name, logs in logs_by_method.items():
+
+            if metric_key == "step":
+                y = [L.step for L in logs]
+            elif metric_key == "residual":
+                y = [L.residual for L in logs if L.residual is not None]
+            elif metric_key == "error":
+                y = [L.error for L in logs if L.error is not None]
+            else:
+                continue
+
+            if len(y) == 0:
+                continue
+
+            # determine grouping (μ or method name)
+            if "μ=" in name:
+                group = name.split("μ=")[1]
+            else:
+                group = name
+
+            color = group_color[group]
+            linestyle = "-" if "SPPA" in name else "--"
+
+            plt.semilogy(
+                np.arange(len(y)),
+                np.array(y, float),
+                linestyle=linestyle,
+                color=color,
+                linewidth=2.0,
+                label=name,
+            )
+
+        plt.xlabel("Iteration")
+        plt.ylabel(ylabel)
+        plt.title(f"{tag}: {ylabel}")
+        plt.grid(True, which="both", linestyle="--", linewidth=0.5)
+        plt.legend(frameon=False)
+        plt.tight_layout()
+
+        path = os.path.join(outdir, filename)
+        plt.savefig(path, dpi=300)
+        plt.close()
+        return path
+
+    # --- Step size ---
+    outputs["step"] = plot_metric(
+        "step",
+        r"$\|x_{n+1}-x_n\|$",
+        f"{tag}_steps.png"
+    )
+
+    # --- Residual ---
     if plot_residual:
-        res = {}
-        for m, logs in logs_by_method.items():
-            vals = [L.residual for L in logs if L.residual is not None]
-            if vals:
-                res[m] = np.array(vals, float)
-        if res:
-            p = os.path.join(outdir, f"{tag}_residual.png")
-            _semilogy_multi(res, r"$R(x_n)$", f"{tag}: Residual", p)
-            out["residual"] = p
+        outputs["residual"] = plot_metric(
+            "residual",
+            r"$R(x_n)$",
+            f"{tag}_residual.png"
+        )
 
+    # --- Error ---
     if plot_error:
-        err = {}
-        for m, logs in logs_by_method.items():
-            vals = [L.error for L in logs if L.error is not None]
-            if vals:
-                err[m] = np.array(vals, float)
-        if err:
-            p = os.path.join(outdir, f"{tag}_error.png")
-            _semilogy_multi(err, r"$\|x_n-\bar{x}\|$", f"{tag}: Error", p)
-            out["error"] = p
+        outputs["error"] = plot_metric(
+            "error",
+            r"$\|x_n-\bar{x}\|$",
+            f"{tag}_error.png"
+        )
 
-    return out
-
+    return outputs
 
 def _fmt_sci(x: Optional[float]) -> str:
     if x is None:
