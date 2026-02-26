@@ -239,14 +239,40 @@ def latex_row(s: RunSummary) -> str:
 
 
 def latex_table(summaries: List[RunSummary], caption: str, label: str) -> str:
+    has_error = any(s.final_error is not None for s in summaries)
+
+    if has_error:
+        colspec = "lrrrrrr"
+        header_cols = (
+            "Method & Iters & Total (s) & Avg resolvent (s) & Avg residual (s) & "
+            "Final $\\|x_n-\\bar x\\|$ & Final $R(x_n)$\\\\\n"
+        )
+        def row(s: RunSummary) -> str:
+            return (
+                f"{s.method} & {s.iters:d} & {s.total_s:.4f} & "
+                f"{s.avg_resolvent_s:.5f} & {s.avg_residual_s:.5f} & "
+                f"{_fmt_sci(s.final_error)} & {_fmt_sci(s.final_residual)} \\\\"
+            )
+    else:
+        colspec = "lrrrrr"
+        header_cols = (
+            "Method & Iters & Total (s) & Avg resolvent (s) & Avg residual (s) & "
+            "Final $R(x_n)$\\\\\n"
+        )
+        def row(s: RunSummary) -> str:
+            return (
+                f"{s.method} & {s.iters:d} & {s.total_s:.4f} & "
+                f"{s.avg_resolvent_s:.5f} & {s.avg_residual_s:.5f} & "
+                f"{_fmt_sci(s.final_residual)} \\\\"
+            )
+
     header = (
         "\\begin{table}[!ht]\n\\centering\n"
-        "\\begin{tabular}{lrrrrrr}\n\\hline\n"
-        "Method & Iters & Total (s) & Avg resolvent (s) & Avg residual (s) & "
-        "Final $\\|x_n-\\bar x\\|$ & Final $R(x_n)$\\\\\n"
+        f"\\begin{{tabular}}{{{colspec}}}\n\\hline\n"
+        f"{header_cols}"
         "\\hline\n"
     )
-    body = "\n".join(latex_row(s) for s in summaries)
+    body = "\n".join(row(s) for s in summaries)
     footer = (
         "\n\\hline\n\\end{tabular}\n"
         f"\\caption{{{caption}}}\n"
