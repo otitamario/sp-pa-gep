@@ -37,7 +37,7 @@ class RunSummary:
     avg_residual_s: float
     final_error: Optional[float]
     final_residual: Optional[float]
-
+    avg_inner_iters: Optional[float] = None
 
 def run(
     *,
@@ -89,6 +89,8 @@ def run(
                 break
 
     iters_done = len(logs)
+    inner_vals = [L.inner_iters for L in logs if L.inner_iters is not None]
+    avg_inner = float(np.mean(inner_vals)) if inner_vals else None
     summary = RunSummary(
         method=method_name,
         iters=iters_done,
@@ -97,6 +99,7 @@ def run(
         avg_residual_s=(total_residual_s / iters_done) if iters_done else 0.0,
         final_error=logs[-1].error if iters_done else None,
         final_residual=logs[-1].residual if iters_done else None,
+        avg_inner_iters=avg_inner,
     )
     return logs, summary
 
@@ -240,36 +243,40 @@ def latex_row(s: RunSummary) -> str:
 
 def latex_table(summaries: List[RunSummary], caption: str, label: str) -> str:
     has_error = any(s.final_error is not None for s in summaries)
+    has_inner = any(getattr(s, "avg_inner_iters", None) is not None for s in summaries)
 
+    # Build columns dynamically
+    cols = ["Method", "Iters", "Total (s)", "Avg resolvent (s)", "Avg residual (s)"]
+    if has_inner:
+        cols.append("Avg inner iters")
     if has_error:
-        colspec = "lrrrrrr"
-        header_cols = (
-            "Method & Iters & Total (s) & Avg resolvent (s) & Avg residual (s) & "
-            "Final $\\|x_n-\\bar x\\|$ & Final $R(x_n)$\\\\\n"
-        )
-        def row(s: RunSummary) -> str:
-            return (
-                f"{s.method} & {s.iters:d} & {s.total_s:.4f} & "
-                f"{s.avg_resolvent_s:.5f} & {s.avg_residual_s:.5f} & "
-                f"{_fmt_sci(s.final_error)} & {_fmt_sci(s.final_residual)} \\\\"
-            )
-    else:
-        colspec = "lrrrrr"
-        header_cols = (
-            "Method & Iters & Total (s) & Avg resolvent (s) & Avg residual (s) & "
-            "Final $R(x_n)$\\\\\n"
-        )
-        def row(s: RunSummary) -> str:
-            return (
-                f"{s.method} & {s.iters:d} & {s.total_s:.4f} & "
-                f"{s.avg_resolvent_s:.5f} & {s.avg_residual_s:.5f} & "
-                f"{_fmt_sci(s.final_residual)} \\\\"
-            )
+        cols.append("Final $\\|x_n-\\bar x\\|$")
+    cols.append("Final $R(x_n)$")
+
+    # Column spec
+    # Method = l, everything else = r
+    colspec = "l" + "r" * (len(cols) - 1)
+
+    def row(s: RunSummary) -> str:
+        fields = [
+            s.method,
+            f"{s.iters:d}",
+            f"{s.total_s:.4f}",
+            f"{s.avg_resolvent_s:.5f}",
+            f"{s.avg_residual_s:.5f}",
+        ]
+        if has_inner:
+            v = getattr(s, "avg_inner_iters", None)
+            fields.append("-" if v is None else f"{v:.2f}")
+        if has_error:
+            fields.append(_fmt_sci(s.final_error))
+        fields.append(_fmt_sci(s.final_residual))
+        return " & ".join(fields) + " \\\\"
 
     header = (
         "\\begin{table}[!ht]\n\\centering\n"
         f"\\begin{{tabular}}{{{colspec}}}\n\\hline\n"
-        f"{header_cols}"
+        + " & ".join(cols) + "\\\\\n"
         "\\hline\n"
     )
     body = "\n".join(row(s) for s in summaries)
@@ -280,7 +287,6 @@ def latex_table(summaries: List[RunSummary], caption: str, label: str) -> str:
         "\\end{table}\n"
     )
     return header + body + footer
-
 
 def plot_metric_across_cases(
     *,
