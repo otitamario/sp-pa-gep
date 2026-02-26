@@ -52,11 +52,13 @@ def run(
 
     logs: List[IterLog] = []
     x = np.array(x0, dtype=float).copy()
+
     total_resolvent_s = 0.0
     total_residual_s = 0.0
 
     with Timer() as total_timer:
         for k in range(max_iter):
+            # --- main update / resolvent timing ---
             with Timer() as t_res:
                 x_next, info = step_fn(x, k)
             resolvent_s = t_res.dt
@@ -64,23 +66,37 @@ def run(
 
             step = float(np.linalg.norm(x_next - x))
 
+            # --- residual (prefer cached values in info to avoid recomputation) ---
             residual = None
             residual_s = 0.0
             if residual_fn is not None:
-                with Timer() as t_r:
-                    residual = float(residual_fn(x_next))
-                residual_s = t_r.dt
-                total_residual_s += residual_s
+                if isinstance(info, dict) and ("residual" in info):
+                    residual = float(info["residual"])
+                    residual_s = 0.0  # no extra work done here
+                elif isinstance(info, dict) and ("u" in info):
+                    # Common in your experiments: residual = ||x_next - u||
+                    residual = float(np.linalg.norm(x_next - info["u"]))
+                    residual_s = 0.0
+                else:
+                    with Timer() as t_r:
+                        residual = float(residual_fn(x_next))
+                    residual_s = t_r.dt
+                    total_residual_s += residual_s
 
+            # --- error ---
             error = None
             if error_fn is not None:
                 error = float(error_fn(x_next))
 
             logs.append(
                 IterLog(
-                    k=k, step=step, residual=residual, error=error,
-                    resolvent_s=resolvent_s, residual_s=residual_s,
-                    inner_iters=info.get("inner_iters", None),
+                    k=k,
+                    step=step,
+                    residual=residual,
+                    error=error,
+                    resolvent_s=resolvent_s,
+                    residual_s=residual_s,
+                    inner_iters=(info.get("inner_iters", None) if isinstance(info, dict) else None),
                 )
             )
 
@@ -89,8 +105,10 @@ def run(
                 break
 
     iters_done = len(logs)
+
     inner_vals = [L.inner_iters for L in logs if L.inner_iters is not None]
     avg_inner = float(np.mean(inner_vals)) if inner_vals else None
+
     summary = RunSummary(
         method=method_name,
         iters=iters_done,
@@ -102,7 +120,6 @@ def run(
         avg_inner_iters=avg_inner,
     )
     return logs, summary
-
 
 def _ensure_dir(path: str) -> None:
     os.makedirs(path, exist_ok=True)
