@@ -133,7 +133,7 @@ def _semilogy_multi(curves: Dict[str, np.ndarray], ylabel: str, title: str, outp
         plt.semilogy(np.arange(len(y)), y, label=name)
     plt.xlabel("Iteration")
     plt.ylabel(ylabel)
-    plt.title(title)
+    #plt.title(title)
     plt.grid(True, which="both", linestyle="--", linewidth=0.5)
     plt.legend()
     plt.tight_layout()
@@ -148,6 +148,7 @@ def make_standard_plots(
     tag: str,
     plot_residual: bool = True,
     plot_error: bool = True,
+    show_title: bool = False,
 ) -> Dict[str, str]:
 
     import os
@@ -207,7 +208,8 @@ def make_standard_plots(
 
         plt.xlabel("Iteration")
         plt.ylabel(ylabel)
-        plt.title(f"{tag}: {ylabel}")
+        if show_title:
+            plt.title(f"{tag}: {ylabel}")
         plt.grid(True, which="both", linestyle="--", linewidth=0.5)
         plt.legend(frameon=False)
         plt.tight_layout()
@@ -312,6 +314,7 @@ def plot_metric_across_cases(
     ylabel: str,
     title: str,
     outpath: str,
+    show_title: bool = False,
 ):
     import os
     import numpy as np
@@ -359,7 +362,8 @@ def plot_metric_across_cases(
 
     plt.xlabel("Iteration")
     plt.ylabel(ylabel)
-    plt.title(title)
+    if show_title:
+        plt.title(title)
     plt.grid(True, which="both", linestyle="--", linewidth=0.5)
     plt.legend(frameon=False)
     plt.tight_layout()
