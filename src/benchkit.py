@@ -244,6 +244,95 @@ def latex_table(summaries: List[RunSummary], caption: str, label: str) -> str:
     return header + body + footer
 
 
+def latex_tables_split(summaries: List[RunSummary],
+                       caption_perf: str,
+                       label_perf: str,
+                       caption_acc: str,
+                       label_acc: str) -> str:
+
+    has_inner = any(s.avg_inner_iters is not None for s in summaries)
+    has_hit = any(s.pct_hit_max_inner is not None for s in summaries)
+    has_ok = any(s.success_rate is not None for s in summaries)
+    has_cv = any(s.final_constraint_violation is not None for s in summaries)
+    has_error = any(s.final_error is not None for s in summaries)
+
+    # ---------- TABLE A: PERFORMANCE ----------
+    cols_perf = ["Method", "It.", "Tot (s)", "Avg res (s)", "Step$_f$"]
+    if has_inner:
+        cols_perf += ["Avg in.", "Max in."]
+    if has_hit:
+        cols_perf.append(r"\% max")
+    if has_ok:
+        cols_perf.append("Succ. (\%)")
+
+    colspec_perf = "l" + "r" * (len(cols_perf) - 1)
+
+    def row_perf(s):
+        fields = [
+            s.method,
+            f"{s.iters:d}",
+            f"{s.total_s:.4f}",
+            f"{s.avg_resolvent_s:.5f}",
+            _fmt_sci(s.final_step),
+        ]
+        if has_inner:
+            fields.append("-" if s.avg_inner_iters is None else f"{s.avg_inner_iters:.2f}")
+            fields.append("-" if s.max_inner_iters is None else f"{s.max_inner_iters:d}")
+        if has_hit:
+            fields.append("-" if s.pct_hit_max_inner is None else f"{100.0*s.pct_hit_max_inner:.1f}")
+        if has_ok:
+            fields.append("-" if s.success_rate is None else f"{100.0*s.success_rate:.1f}")
+        return " & ".join(fields) + r" \\"
+
+    header_perf = (
+        "\\begin{table}[!ht]\n\\centering\n"
+        f"\\begin{{tabular}}{{{colspec_perf}}}\n\\hline\n"
+        + " & ".join(cols_perf) + "\\\\\n"
+        "\\hline\n"
+    )
+    body_perf = "\n".join(row_perf(s) for s in summaries)
+    footer_perf = (
+        "\n\\hline\n\\end{tabular}\n"
+        f"\\caption{{{caption_perf}}}\n"
+        f"\\label{{{label_perf}}}\n"
+        "\\end{table}\n\n"
+    )
+
+    # ---------- TABLE B: ACCURACY ----------
+    cols_acc = ["Method"]
+    if has_cv:
+        cols_acc.append("Constr. viol.")
+    if has_error:
+        cols_acc.append(r"$\|x_n-\bar x\|$")
+    cols_acc.append(r"$R(x_n)$")
+
+    colspec_acc = "l" + "r" * (len(cols_acc) - 1)
+
+    def row_acc(s):
+        fields = [s.method]
+        if has_cv:
+            fields.append(_fmt_sci(s.final_constraint_violation))
+        if has_error:
+            fields.append(_fmt_sci(s.final_error))
+        fields.append(_fmt_sci(s.final_residual))
+        return " & ".join(fields) + r" \\"
+
+    header_acc = (
+        "\\begin{table}[!ht]\n\\centering\n"
+        f"\\begin{{tabular}}{{{colspec_acc}}}\n\\hline\n"
+        + " & ".join(cols_acc) + "\\\\\n"
+        "\\hline\n"
+    )
+    body_acc = "\n".join(row_acc(s) for s in summaries)
+    footer_acc = (
+        "\n\\hline\n\\end{tabular}\n"
+        f"\\caption{{{caption_acc}}}\n"
+        f"\\label{{{label_acc}}}\n"
+        "\\end{table}\n"
+    )
+
+    return header_perf + body_perf + footer_perf + header_acc + body_acc + footer_acc
+
 def make_standard_plots(
     *,
     logs_by_method: Dict[str, List[IterLog]],
