@@ -8,15 +8,16 @@ import os
 import numpy as np
 import matplotlib.pyplot as plt
 
+# ---------- Core Timer ----------
 
 class Timer:
     def __enter__(self):
         self.t0 = time.perf_counter()
         return self
-
     def __exit__(self, exc_type, exc, tb):
         self.dt = time.perf_counter() - self.t0
 
+# ---------- Iteration & Summary Data Structures ----------
 
 @dataclass
 class IterLog:
@@ -31,7 +32,6 @@ class IterLog:
     ok: Optional[bool] = None
     constraint_violation: Optional[float] = None
     extras: Optional[Dict[str, Any]] = None
-
 
 @dataclass
 class RunSummary:
@@ -49,6 +49,7 @@ class RunSummary:
     success_rate: Optional[float] = None
     final_constraint_violation: Optional[float] = None
 
+# ----------- Main Runner --------------
 
 def run(
     *,
@@ -60,14 +61,6 @@ def run(
     residual_fn: Optional[Callable[[np.ndarray], float]] = None,
     error_fn: Optional[Callable[[np.ndarray], float]] = None,
 ) -> Tuple[List[IterLog], RunSummary]:
-    """
-    Generic runner for iterative methods.
-
-    step_fn(x, k) must return (x_next, info_dict).
-    Preferred: info_dict["residual"] (float) computed inside step_fn.
-    Fallback: if info_dict["u"] exists, residual = ||x_next - u||.
-    Otherwise: if residual_fn provided, compute residual_fn(x_next).
-    """
     logs: List[IterLog] = []
     x = np.array(x0, dtype=float).copy()
 
@@ -76,7 +69,6 @@ def run(
 
     with Timer() as total_timer:
         for k in range(max_iter):
-            # --- main update / resolvent timing ---
             with Timer() as t_res:
                 x_next, info = step_fn(x, k)
             resolvent_s = t_res.dt
@@ -84,34 +76,31 @@ def run(
 
             step = float(np.linalg.norm(x_next - x))
 
-            # --- residual (prefer cached values in info to avoid recomputation) ---
+            # residual logic
             residual = None
             residual_s = 0.0
             if residual_fn is not None:
-                if isinstance(info, dict) and ("residual" in info):
+                if isinstance(info, dict) and "residual" in info:
                     residual = float(info["residual"])
-                    residual_s = 0.0
-                elif isinstance(info, dict) and ("u" in info):
+                elif isinstance(info, dict) and "u" in info:
                     residual = float(np.linalg.norm(x_next - info["u"]))
-                    residual_s = 0.0
                 else:
                     with Timer() as t_r:
                         residual = float(residual_fn(x_next))
                     residual_s = t_r.dt
                     total_residual_s += residual_s
             else:
-                # If residual_fn is None, allow step_fn to supply residual anyway.
-                if isinstance(info, dict) and ("residual" in info):
+                if isinstance(info, dict) and "residual" in info:
                     residual = float(info["residual"])
-                elif isinstance(info, dict) and ("u" in info):
+                elif isinstance(info, dict) and "u" in info:
                     residual = float(np.linalg.norm(x_next - info["u"]))
 
-            # --- error ---
+            # error
             error = None
             if error_fn is not None:
                 error = float(error_fn(x_next))
 
-            # --- optional diagnostics extracted from info ---
+            # parse extra info
             inner_iters = info.get("inner_iters", None) if isinstance(info, dict) else None
             inner_hit_max = info.get("inner_hit_max", None) if isinstance(info, dict) else None
             ok = info.get("ok", None) if isinstance(info, dict) else None
@@ -140,13 +129,12 @@ def run(
 
     iters_done = len(logs)
 
-    # Inner iteration summary
     inner_vals = [L.inner_iters for L in logs if L.inner_iters is not None]
     avg_inner = float(np.mean(inner_vals)) if inner_vals else None
     max_inner = int(np.max(inner_vals)) if inner_vals else None
 
     hit_vals = [L.inner_hit_max for L in logs if L.inner_hit_max is not None]
-    pct_hit = float(np.mean(hit_vals)) if hit_vals else None  # mean of booleans
+    pct_hit = float(np.mean(hit_vals)) if hit_vals else None
 
     ok_vals = [L.ok for L in logs if L.ok is not None]
     success_rate = float(np.mean(ok_vals)) if ok_vals else None
@@ -173,6 +161,7 @@ def run(
     )
     return logs, summary
 
+# ---------- OLD SINGLE TABLE FUNCTION -----------
 
 def _fmt_sci(x: Optional[float]) -> str:
     if x is None:
@@ -180,7 +169,6 @@ def _fmt_sci(x: Optional[float]) -> str:
     if x == 0.0:
         return "0"
     return f"{x:.4e}"
-
 
 def latex_table(summaries: List[RunSummary], caption: str, label: str) -> str:
     has_error = any(s.final_error is not None for s in summaries)
@@ -243,20 +231,20 @@ def latex_table(summaries: List[RunSummary], caption: str, label: str) -> str:
     )
     return header + body + footer
 
+# ---------- NEW SPLIT TABLES FUNCTION -----------
 
 def latex_tables_split(summaries: List[RunSummary],
                        caption_perf: str,
                        label_perf: str,
                        caption_acc: str,
                        label_acc: str) -> str:
-
     has_inner = any(s.avg_inner_iters is not None for s in summaries)
     has_hit = any(s.pct_hit_max_inner is not None for s in summaries)
     has_ok = any(s.success_rate is not None for s in summaries)
     has_cv = any(s.final_constraint_violation is not None for s in summaries)
     has_error = any(s.final_error is not None for s in summaries)
 
-    # ---------- TABLE A: PERFORMANCE ----------
+    # --- performance table ---
     cols_perf = ["Method", "It.", "Tot (s)", "Avg res (s)", "Step$_f$"]
     if has_inner:
         cols_perf += ["Avg in.", "Max in."]
@@ -286,7 +274,7 @@ def latex_tables_split(summaries: List[RunSummary],
 
     header_perf = (
         "\\begin{table}[!ht]\n\\centering\n"
-        f"\\begin{{tabular}}{{{colspec_perf}}}\n\\hline\n"
+        f"\\begin{{tabular}}}{{{colspec_perf}}}\n\\hline\n"
         + " & ".join(cols_perf) + "\\\\\n"
         "\\hline\n"
     )
@@ -298,12 +286,12 @@ def latex_tables_split(summaries: List[RunSummary],
         "\\end{table}\n\n"
     )
 
-    # ---------- TABLE B: ACCURACY ----------
+    # --- accuracy/feasibility table ---
     cols_acc = ["Method"]
     if has_cv:
         cols_acc.append("Constr. viol.")
     if has_error:
-        cols_acc.append(r"$\|x_n-\bar x\|$")
+        cols_acc.append(r"$\lVert x_n-\bar{x}\rVert$")
     cols_acc.append(r"$R(x_n)$")
 
     colspec_acc = "l" + "r" * (len(cols_acc) - 1)
@@ -332,73 +320,3 @@ def latex_tables_split(summaries: List[RunSummary],
     )
 
     return header_perf + body_perf + footer_perf + header_acc + body_acc + footer_acc
-
-def make_standard_plots(
-    *,
-    logs_by_method: Dict[str, List[IterLog]],
-    outdir: str,
-    tag: str,
-    plot_residual: bool = True,
-    plot_error: bool = True,
-    show_title: bool = False,
-) -> Dict[str, str]:
-    import numpy as np
-    import matplotlib.pyplot as plt
-    os.makedirs(outdir, exist_ok=True)
-    outputs = {}
-
-    # --- color assignment (same color per μ if present) ---
-    unique_groups = set()
-    for name in logs_by_method.keys():
-        if "μ=" in name:
-            unique_groups.add(name.split("μ=")[1])
-        else:
-            unique_groups.add(name)
-    unique_groups = sorted(unique_groups)
-
-    cmap = plt.get_cmap("tab10")
-    group_color = {g: cmap(i) for i, g in enumerate(unique_groups)}
-
-    def plot_metric(metric_key, ylabel, filename):
-        plt.figure()
-        for name, logs in logs_by_method.items():
-            if metric_key == "step":
-                y = [L.step for L in logs]
-            elif metric_key == "residual":
-                y = [L.residual for L in logs if L.residual is not None]
-            elif metric_key == "error":
-                y = [L.error for L in logs if L.error is not None]
-            else:
-                continue
-
-            if len(y) == 0:
-                continue
-
-            if "μ=" in name:
-                group = name.split("μ=")[1]
-            else:
-                group = name
-
-            color = group_color[group]
-            linestyle = "-" if "SPPA" in name else "--"
-            plt.semilogy(np.arange(len(y)), np.array(y, float), linestyle=linestyle, color=color, linewidth=2.0, label=name)
-
-        plt.xlabel("Iteration")
-        plt.ylabel(ylabel)
-        if show_title:
-            plt.title(f"{tag}: {ylabel}")
-        plt.grid(True, which="both", linestyle="--", linewidth=0.5)
-        plt.legend(frameon=False)
-        plt.tight_layout()
-        path = os.path.join(outdir, filename)
-        plt.savefig(path, dpi=300)
-        plt.close()
-        return path
-
-    outputs["step"] = plot_metric("step", r"$\|x_{n+1}-x_n\|$", f"{tag}_steps.png")
-    if plot_residual:
-        outputs["residual"] = plot_metric("residual", r"$R(x_n)$", f"{tag}_residual.png")
-    if plot_error:
-        outputs["error"] = plot_metric("error", r"$\|x_n-\bar{x}\|$", f"{tag}_error.png")
-
-    return outputs
