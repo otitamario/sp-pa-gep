@@ -320,3 +320,64 @@ def latex_tables_split(summaries: List[RunSummary],
     )
 
     return header_perf + body_perf + footer_perf + header_acc + body_acc + footer_acc
+
+def make_standard_plots(
+    *,
+    logs_by_method: Dict[str, List[IterLog]],
+    outdir: str,
+    tag: str,
+    plot_residual: bool = True,
+    plot_error: bool = True,
+    show_title: bool = False,
+) -> Dict[str, str]:
+    """
+    Standard semilogy plots for step size, residual, and (optionally) error.
+
+    Saves:
+        {tag}_steps.png
+        {tag}_residual.png   (if plot_residual)
+        {tag}_error.png      (if plot_error)
+
+    Returns dict with saved paths.
+    """
+    os.makedirs(outdir, exist_ok=True)
+    outputs = {}
+
+    def _plot(metric: str, ylabel: str, filename: str):
+        plt.figure()
+        for name, logs in logs_by_method.items():
+            if metric == "step":
+                y = [L.step for L in logs]
+            elif metric == "residual":
+                y = [L.residual for L in logs if L.residual is not None]
+            elif metric == "error":
+                y = [L.error for L in logs if L.error is not None]
+            else:
+                continue
+
+            if len(y) == 0:
+                continue
+
+            # style: SPPA solid, WPPA dashed
+            linestyle = "-" if "SPPA" in name else "--"
+            plt.semilogy(np.arange(len(y)), np.asarray(y, float), linestyle=linestyle, linewidth=2.0, label=name)
+
+        plt.xlabel("Iteration")
+        plt.ylabel(ylabel)
+        if show_title:
+            plt.title(f"{tag}: {ylabel}")
+        plt.grid(True, which="both", linestyle="--", linewidth=0.5)
+        plt.legend(frameon=False)
+        plt.tight_layout()
+        path = os.path.join(outdir, filename)
+        plt.savefig(path, dpi=300)
+        plt.close()
+        return path
+
+    outputs["step"] = _plot("step", r"$\|x_{n+1}-x_n\|$", f"{tag}_steps.png")
+    if plot_residual:
+        outputs["residual"] = _plot("residual", r"$R(x_n)$", f"{tag}_residual.png")
+    if plot_error:
+        outputs["error"] = _plot("error", r"$\|x_n-\bar{x}\|$", f"{tag}_error.png")
+
+    return outputs
