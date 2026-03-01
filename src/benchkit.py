@@ -251,7 +251,7 @@ def latex_tables_split(summaries: List[RunSummary],
     if has_hit:
         cols_perf.append(r"\% max")
     if has_ok:
-        cols_perf.append("Succ. (\%)")
+        cols_perf.append(r"Succ. (\%)")
 
     colspec_perf = "l" + "r" * (len(cols_perf) - 1)
 
@@ -274,7 +274,7 @@ def latex_tables_split(summaries: List[RunSummary],
 
     header_perf = (
         "\\begin{table}[!ht]\n\\centering\n"
-        f"\\begin{{tabular}}}{{{colspec_perf}}}\n\\hline\n"
+        f"\\begin{{tabular}}{{{colspec_perf}}}\n\\hline\n"
         + " & ".join(cols_perf) + "\\\\\n"
         "\\hline\n"
     )
