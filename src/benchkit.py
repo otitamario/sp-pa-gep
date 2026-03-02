@@ -163,13 +163,19 @@ def run(
 
 # ---------- OLD SINGLE TABLE FUNCTION -----------
 
-def _fmt_sci(x: Optional[float]) -> str:
+def _fmt_sci(x: Optional[float], floor: float = 1e-16) -> str:
+    """
+    Scientific formatter with a floor to avoid reporting meaningless underflow
+    values (e.g., 1e-67 in float64). If 0 < |x| < floor, display <= floor.
+    """
     if x is None:
         return "-"
-    if x == 0.0:
+    ax = abs(float(x))
+    if ax == 0.0:
         return "0"
+    if ax < floor:
+        return rf"\le {floor:.0e}"
     return f"{x:.4e}"
-
 def latex_table(summaries: List[RunSummary], caption: str, label: str) -> str:
     has_error = any(s.final_error is not None for s in summaries)
     has_inner = any(s.avg_inner_iters is not None for s in summaries)
@@ -330,16 +336,6 @@ def make_standard_plots(
     plot_error: bool = True,
     show_title: bool = False,
 ) -> Dict[str, str]:
-    """
-    Standard semilogy plots for step size, residual, and (optionally) error.
-
-    Saves:
-        {tag}_steps.png
-        {tag}_residual.png   (if plot_residual)
-        {tag}_error.png      (if plot_error)
-
-    Returns dict with saved paths.
-    """
     os.makedirs(outdir, exist_ok=True)
     outputs = {}
 
@@ -358,9 +354,14 @@ def make_standard_plots(
             if len(y) == 0:
                 continue
 
-            # style: SPPA solid, WPPA dashed
+            yy = np.asarray(y, float)
+
+            # Clamp to avoid log-scale artifacts at machine precision
+            floor = 1e-16
+            yy = np.maximum(yy, floor)
+
             linestyle = "-" if "SPPA" in name else "--"
-            plt.semilogy(np.arange(len(y)), np.asarray(y, float), linestyle=linestyle, linewidth=2.0, label=name)
+            plt.semilogy(np.arange(len(yy)), yy, linestyle=linestyle, linewidth=2.0, label=name)
 
         plt.xlabel("Iteration")
         plt.ylabel(ylabel)
